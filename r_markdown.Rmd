@@ -1,0 +1,1009 @@
+---
+title: "Analyze the sales of a bookstore"
+author: "Corentin Casali"
+date: "2/1/2022"
+output:
+  html_document: default
+  pdf_document: default
+editor_options:
+  chunk_output_type: console
+---
+Data Analyst Consultant at Lapage, a large and reputable generalist online bookstore. You will report directly to the Marketing department. Lapage was originally a physical bookstore with several points of sale. However, due to the success of some of its products and the enthusiasm of its customers, it decided to open an online sales site two years ago. You intervene because the company wishes to take stock after two years of exercise, and to be able to analyze its strong points, its weak points, the customers behaviors, etc...
+
+# Librairies - R.packages
+Import of R packages useful for the analysis.
+```{r, message=FALSE}
+## First specify the packages of interest
+packages = c("knitr","readr","dplyr","kableExtra",'stringi','tidyverse','lubridate','moments','scales','zoo',"gridExtra","plotly","rstatix","ggpubr",'rstudioapi','ineq')
+
+## Now load or install&load all
+package.check <- lapply(
+  packages,
+  FUN = function(x) {
+    if (!require(x, character.only = TRUE)) {
+      install.packages(x, dependencies = TRUE)
+      library(x, character.only = TRUE)
+    }
+  }
+)
+# setwd(dirname(getActiveDocumentContext()$path))       # Set working directory to source file location
+knitr::opts_chunk$set(echo=TRUE, fig.height = 8, fig.width = 12, fig.align = "center")
+```
+# Data cleaning :
+Import of data into 3 different dataframes
+```{r message=FALSE,warning=FALSE}
+# Loading .csv files into dataframes
+df_customers <- read_csv("data/customers.csv")
+df_products <- read_csv("data/products.csv")
+df_transactions <-  read_csv("data/transactions.csv")
+```
+**Quick view of our dataframes:**
+```{r}
+# Visualization of dataframes
+str(df_customers)
+str(df_products)
+str(df_transactions)
+```
+## Missing values 
+We check if our data have missing values.
+```{r}
+# Handling missing values
+sapply(df_customers, function(y) sum(is.na(y)))
+sapply(df_products, function(y) sum(is.na(y)))
+sapply(df_transactions, function(y) sum(is.na(y)))
+```
+The **transactions** dataframe has ***200 missing values*** on the ***date*** variable. 
+```{r}
+# Viewing missing data:
+kable(head(df_transactions[is.na(df_transactions$date),],10))%>%
+  kable_styling(latex_options = 'striped')
+
+# Delete NA values from the "date" variable:
+df_transactions <- df_transactions %>% drop_na(date) 
+
+# Check :
+sapply(df_transactions, function(y) sum(is.na(y)))
+```
+We have removed the NA data from the date variable. Indeed, we found that it is probably a test variable. They will not be necessary in our data analysis.
+
+## Duplicates :
+We check if our data have duplicates.
+```{r}
+sum(duplicated(df_customers))
+sum(duplicated(df_products))
+sum(duplicated(df_transactions))
+```
+No duplicates in our dataframes!
+
+## Specific inspection of dataframes 
+
+### Dataframe - customers :
+```{r}
+# Dataframe inspection: 
+kable(head(df_customers)) %>%
+  kable_styling(latex_options = 'striped')
+
+# Check ID : 
+kable(head(df_customers[order(df_customers$client_id, decreasing=TRUE),])) %>% 
+  kable_styling(latex_options = 'striped')
+kable(head(df_customers[order(df_customers$client_id, decreasing=FALSE),])) %>%
+  kable_styling(latex_options = 'striped')
+
+# Check "âges" : 
+summary(df_customers)
+
+# List of IDs to check 
+checkID <- c('ct_0','ct_1')
+```
+We notice several things in this dataframe:
+
+* the **ct_0** and **ct_1** IDs do not have the same mapping as the other IDs They could potentially be **test id¨**. We will see later what their transactions correspond to once the joins are done.
+* the ages of the clients range from 19 to 94. Therefore, we do not have any anomalies regarding the ages.
+
+### Dataframe - products :
+```{r df_products}
+# Dataframe inspection: 
+kable(head(df_products)) %>%
+  kable_styling(latex_options = 'striped')
+
+# Checking outliers: 
+summary(df_products)
+```
+We notice negative prices. So we will do a cleaning of the data of the variable **price**.
+
+```{r}
+# Data whose price is < 0
+kable(df_products[df_products$price <= 0,]) %>%
+   kable_styling(latex_options = 'striped')
+
+# Deleting this data 
+df_products <- df_products[df_products$price >= 0,]
+
+# Checking the cleaning
+summary(df_products$price)
+```
+So we have prices ranging from 0,62€ to 300€. No more price anomalies.
+
+### Dataframe - transaction :
+```{r}
+kable(head(df_transactions)) %>%
+  kable_styling(latex_options = 'striped')
+summary(df_transactions)
+```
+No data to clean up for the transaction dataframe.
+
+# Data join :
+## Summary of the 3 dataframes:
+
+**Qualitative variables:** 
+
+* id (id_prod, client_id, session_id); 
+* gender of clients (f or m) ; 
+* product categories (0, 1 or 2) ; 
+* transaction dates
+
+**Quantitative variable:** 
+
+* product price
+
+## Join between the transactions and customers dataframe
+```{r}
+# Join between the transactions and customers dataframe
+df_transactions_customers <- left_join(df_transactions, df_customers, by="client_id")
+kable(head(df_transactions_customers)) %>%
+  kable_styling(latex_options = 'striped')
+
+# Checking missing values : 
+sapply(df_transactions_customers, function(y) sum(is.na(y)))
+
+#Dataframe size
+nrow(df_transactions)
+nrow(df_transactions_customers)
+```
+No missing data. Also, we have the same number of rows, so the join worked.
+
+## Final dataframe join
+```{r}
+df_final <- left_join(df_transactions_customers,df_products, by="id_prod")
+kable(head(df_final))%>%
+  kable_styling(latex_options = 'striped')
+
+# Checking missing values : 
+sapply(df_final, function(y) sum(is.na(y)))
+```
+221 missing values for the **price** variable & the **categ** variable.
+
+```{r}
+# Creation of a dataframe containing only the NA of the *price* variable of the final dataframe
+df_no_values <- df_final[is.na(df_final$price)== TRUE,]
+kable(head(df_no_values))%>%
+  kable_styling(latex_options = 'striped')
+
+sapply(df_no_values, function(y) sum(is.na(y)))
+```
+The variables **price** and **categ** are correlated for missing data.
+
+```{r}
+# Product inspection associated with these variables
+unique(df_no_values$id_prod)
+
+# Product inspection
+kable(head(df_final[df_final$id_prod=='0_2245',]))%>%
+  kable_styling(latex_options = 'striped')
+
+# Number of transactions 
+nrow(df_final[df_final$id_prod=='0_2245',])
+```
+We realize that only one product is associated with these missing data. It is the product : **0_2245**. 
+It is indeed a product that does not contain **price** and **categ**. However, the customers are different. We can assume that it is a product offered or a coupon issued by the company that does not belong to any category and therefore has no price.
+We will therefore remove this **id_prod** from the final dataframe. 
+
+```{r}
+# Delete the product id 0_2245
+df_final <- subset(df_final,id_prod!='0_2245')
+
+# Adding a date variable and separating it into year, day, month for processing
+df_final$newDate <- date(df_final$date)
+df_final$year <- year(df_final$newDate)
+df_final$month <- month(df_final$newDate)
+df_final$day <- day(df_final$newDate)
+
+# Factor in the category
+df_final$categ <- as.factor(df_final$categ)
+```
+To facilitate future processing, we have segmented the date of transactions as well as factoring the product categories. As a result, our final dataframe looks like this:
+
+```{r}
+kable(head(df_final))%>%
+  kable_styling(latex_options = 'striped')
+
+# Vérification des ID test : 
+subset(df_final, client_id %in% checkID)
+```
+We get no data, the client_id **ct_0** and **ct_1** were indeed test IDs. Their transactions have been deleted. 
+
+# Antoine's mission:
+
+* Indicators and graphs around the turnover;
+* Decomposition of the turnover in moving average to evaluate the global trend;
+* Zoom on references: top/flop; distribution by category
+* Information on customer profiles: breakdown of sales, Lorenz curve.
+
+## Analysis and evolution of the turnover
+```{r}
+# Creation of a dataframe recovering for each month and year the turnover
+monthsCA <- df_final %>%
+  mutate(month = sprintf("%02d",df_final$month))%>%
+  group_by(year, month) %>%
+  summarise(totalCAk = sum(price, na.rm=T))
+
+# Add monthly date (Date format)
+monthsCA$yearMonth <- paste(monthsCA$year,monthsCA$month,'1',sep='-')
+monthsCA$date <- as.Date(monthsCA$yearMonth, "%Y-%m-%d")
+
+monthsCA %>% 
+  ggplot(aes(x=date,y=totalCAk,group=1))+
+  geom_line(color="grey")+
+  geom_point(color='steelblue',size=4) +
+  scale_x_date(date_labels = ('%b-%Y'), date_breaks= "2 month")+
+  scale_y_continuous(labels = dollar_format(suffix = "€", prefix="", big.mark = '.', decimal.mark = ','))+
+  labs(title="Evolution of the turnover (CA) according to the month and the year",
+       subtitle = "March 2021 to February 2023",
+       x="Month - Year", 
+       y="Total turnover")
+```
+There is a drop in turnover in October 2021. Nevertheless, we are going to make a moving average to see the global trends, as well as a breakdown of the turnover in week and not in month. 
+
+### Moving average of the turnover / Global trend :
+```{r}
+# Breakdown of the df_final into year, month, week, category to make a detailed analysis.
+weekCA <- df_final %>%
+  mutate(month = sprintf("%02d",month),
+         week = sprintf("%02d",week(newDate)),
+         idDate = paste(year,month,week,sep='')) %>%
+  group_by(year,month, week, categ, idDate) %>%
+  summarise(CA = sum(price, na.rm=T))
+# We transform week 53 into 52 so as not to overestimate the cutting
+weekCA$week[weekCA$week==53] <- 52
+
+# Breakdown of the df_final in year, month, week to make the moving average of the turnover
+globalCA <- df_final %>%
+  mutate(month = sprintf("%02d",month),
+         week = sprintf("%02d",week(newDate)),
+         idDate = paste(year,month,week,sep='')) %>%
+  group_by(year,month, week, idDate) %>%
+  summarise(totalCA = sum(price, na.rm=T)) %>%
+  ungroup()
+# We transform week 53 into 52 so as not to overestimate the cutting
+globalCA$week[globalCA$week==53] <- 52
+
+# Add a variable to retrieve a common date between the years, week
+weekCA$yearWeekDay <- paste(weekCA$year,weekCA$week,'1', sep="")
+globalCA$yearWeekDay <- paste(globalCA$year,globalCA$week,'1', sep="")
+# Turn of the variable into date 
+weekCA$newDate <- as.Date(weekCA$yearWeekDay, "%Y%U%w")
+globalCA$newDate <- as.Date(globalCA$yearWeekDay, "%Y%U%w")
+
+# Turn of the obtained variables to gather the obtained days in a single line.
+weekCA_2 <- weekCA %>%
+  group_by(newDate, categ) %>%
+  summarise(CA = sum(CA, na.rm=T))
+
+globalCA_2 <- globalCA %>%
+  group_by(newDate) %>%
+  summarise(totalCA = sum(totalCA, na.rm=T))
+```
+
+```{r}
+# Creation of a dataframe for the moving average
+rollmeanCA <- globalCA_2 %>% select(newDate,totalCA)
+rollmeanCA <- rollmeanCA %>% 
+  mutate(CA_12da = rollmean(totalCA,k=12,fill=NA)) # 12 semaines
+         #CA_05da = rollmean(totalCA,k=12,fill=NA))  # 5 semaines
+
+chiffreAffaire <- left_join(weekCA_2,rollmeanCA, by="newDate") # join to obtain a single global data
+
+# Pivot to retrieve data and put them in a single column for plot
+ggplot(chiffreAffaire) +
+  geom_bar(aes(x=newDate, y=CA, fill=categ), stat ='identity', width = 5)+
+  scale_fill_brewer(palette="Paired")+
+  geom_line(aes(x=newDate, y=CA_12da, colour = "12 weeks"),size=1.2) +
+  #geom_line(aes(x=newDate, y=CA_05da, colour = "5 semaines"),size=1.2) +
+  scale_color_manual(name = "Moving average", values = c("12 weeks" = "red"))+ #, "5 semaines" = "black")) +
+  scale_y_continuous(labels = dollar_format(suffix = "€", prefix="", big.mark = '.', decimal.mark = ','))+
+  scale_x_date(date_labels = ('%b-%Y'), date_breaks= "3 month")+
+  labs(title="Evolution of the turnover over time (weekly representation)",
+       subtitle = "March 2021 to February 2023",
+       x="Time", 
+       y="Total turnover (€)",
+       fill="Product category")
+```
+We realize that the number of transactions for the month **of October 2021** are significantly lower than those of the previous month (September) and the next (November).
+Significant drop recorded for the month of October 2021, why?
+
+**Analysis of the month of October 2021**
+```{r, message=FALSE}
+# Creation of a dataframe retrieving for each month and year the turnover and the number of transactions
+monthsCA_categ <- df_final %>%
+  mutate(month = sprintf("%02d",month)) %>%
+  group_by(year,month,categ) %>%
+  summarise(totalCAk = sum(price, na.rm=T),
+            transaction = n())
+# Add monthly date (Date format)
+monthsCA_categ$yearMonth <- paste(monthsCA_categ$year,monthsCA_categ$month,'1',sep='-')
+monthsCA_categ$date <- as.Date(monthsCA_categ$yearMonth, "%Y-%m-%d")
+
+# Creation of a graph showing the evolution of the turnover and number of transacitons over time
+g1 <- monthsCA_categ %>%
+  ggplot()+
+  geom_bar(aes(x=date, y=totalCAk,fill=categ), stat = 'identity')+
+  scale_fill_brewer(palette="Paired")+
+  scale_y_continuous(labels = dollar_format(suffix = "€", prefix="", big.mark = '.', decimal.mark = ','))+
+  scale_x_date(date_labels = ('%b-%Y'), date_breaks= "2 month")+
+  labs(title="Evolution of the turnover and the number of transactions over time (monthly representation)",
+       subtitle = "March 2021 to February 2023",
+       x="Time", 
+       y="Total turnover (€)",
+       fill="Product category")+
+  theme_minimal()
+
+g2 <- monthsCA_categ %>%
+  ggplot()+
+  geom_bar(aes(x=date, y=transaction,fill=categ), stat = 'identity')+
+  scale_fill_brewer(palette="Paired")+
+  scale_y_continuous(labels = function(x) format(x, big.mark = ' '))+
+  scale_x_date(date_labels = ('%b-%Y'), date_breaks= "2 month")+
+  labs(x="Time", 
+       y="Number of transactions",
+       fill="Product category")+
+  theme_minimal()
+
+grid.arrange(g1,g2,nrow=2)
+```
+We have significantly fewer transactions for **Category 1** products for the month of October. We will inspect in detail.
+
+```{r}
+# October 2021 Inspection
+octobre2021 <- cbind(df_final)
+
+# We recover only the year 2021 and the month 10 (October) of the final dataframe
+octobre2021 <- octobre2021[(octobre2021$year == 2021) & (octobre2021$month == 10),]
+infoOctobre2021 <- octobre2021 %>%
+  group_by(day,categ) %>%
+  summarise(CA = sum(price),
+            transaction = n())
+
+g1 <- infoOctobre2021 %>%
+  ggplot()+
+  geom_bar(aes(x=day,y=CA,fill=categ),stat='identity')+
+  scale_fill_brewer(palette="Paired") +
+  scale_y_continuous(labels = dollar_format(suffix = "€", prefix="", big.mark = '.', decimal.mark = ','))+
+  scale_x_continuous(breaks= seq(1,31,by=3))+
+  labs(title="Evolution of the turnover and the number of transactions during October 2021 (daily representation)",
+       x="Day of the month", 
+       y="Total turnover (€)",
+       fill="Product category")+
+  theme_minimal()
+
+g2 <- infoOctobre2021 %>%
+  ggplot()+
+  geom_bar(aes(x=day, y=transaction,fill=categ), stat = 'identity')+
+  scale_fill_brewer(palette="Paired")+
+  scale_y_continuous(labels = function(x) format(x, big.mark = ' '))+
+  scale_x_continuous(breaks= seq(1,31,by=3))+
+  labs(x="Day of the month", 
+       y="Number of transactions",
+       fill="Product category")+
+  theme_minimal()
+
+grid.arrange(g1,g2,nrow=2)
+```
+Between **2021-10-02** and **2021-10-27** no sales related to **category** 1 products were taken into account in the database. This is potentially linked to a stockout of category 1 products or to a computer bug. Several solutions are available to us.
+
+We choose to delete all the data from October 2021 to avoid any problems in our analysis. 
+```{r}
+# Create a copy of the current df_final to keep all data
+final_october <- cbind(df_final)
+
+# Deletion of the month of October 2021 in df_final
+df_final <- df_final[!(df_final$month == 10 & df_final$year == 2021),]
+```
+
+## Zoom on the references 
+### Analysis of the 'price' variable
+```{r}
+# Function to get the "mode" of the variable
+getmode <- function(val){
+  uniqvalue <- unique(val)
+  uniqvalue[which.max(tabulate(match(val,uniqvalue)))]
+}
+
+# Function to get a statistical summary :
+stats_summary <- function (df){
+  name <-c("Mean","Mode","Median","Corrected variance", "Corrected standard deviation", "Skewness", "Kurtosis")
+  value <- c(mean(df,na.rm = T),getmode(df),median(df, na.rm = T),var(df, na.rm = T),sd(df, na.rm = T),skewness(df, na.rm = T),kurtosis(df, na.rm = T))
+  df <- data.frame(name,value)
+  df$value <- lapply(df$value, round, 2)
+  print(df)
+}
+# Application of the function on the 'price' of the analyzed dataframe :
+stats_summary(df_final$price)
+```
+The average price of products sold on the website is 17.54€. 
+
+### Top and flop references 
+```{r}
+# Creation of a sub-dataframe to sort products by turnover
+tab <- df_final %>%
+  group_by(id_prod) %>%
+  summarise(CA = sum(price),
+            transaction = n())
+tab <- left_join(tab,df_products, by="id_prod")
+
+# Top 10 - Product
+kable(head(tab[order(-tab$CA),],10)) %>%
+  kable_styling(latex_options = 'striped')
+
+# Bottom 10 - Product
+kable(head(tab[order(tab$CA),],10))%>%
+  kable_styling(latex_options = 'striped')
+```
+We can see that we have products with a turnover > 50.000€ with more than 2.000 products purchased. 
+No product of category 0 is present in the top 10 products.
+
+We realize that at least each product has been purchased. 
+
+### Distribution by category 
+```{r}
+# Representation of products by category available on the website (df_products) :
+tab <- df_products %>%
+  group_by(categ)%>%
+  summarise(transaction = n(),
+            frequence = n()/nrow(df_products)) %>%
+  mutate(frequence_c = cumsum(frequence),
+         categ = as.factor(categ))
+
+g1 <- tab %>%
+ggplot(aes(x="",y=transaction,fill=categ))+
+  geom_col(width=1, color="white")+
+  coord_polar('y', start=0)+
+  geom_text(aes(label = paste0(round(transaction/sum(transaction)*100,2),"%")),position = position_stack(vjust = 0.5))+
+  labs(title = "Representation of products by category available on the website (df_products) ",
+       subtitle = "Period March-2021 to February-2023 (without October 2021)")+
+  theme_void()+
+  scale_fill_brewer(palette="Paired") 
+
+# Representation of products by category sold on the website (df_final) :
+tab <- df_final %>%
+  group_by(categ)%>%
+  summarise(transaction = n(),
+            frequence = n()/nrow(df_final)) %>%
+  mutate(frequence_c = cumsum(frequence))
+
+g2 <- tab %>%
+ggplot(aes(x="",y=transaction,fill=categ))+
+  geom_col(width=1, color="white")+
+  coord_polar('y', start=0)+
+  geom_text(aes(label = paste0(round(transaction/sum(transaction)*100,2),"%")),position = position_stack(vjust = 0.5))+
+  labs(title = "Representation of products by category sold on the website (df_final) ",
+       subtitle = "Period March-2021 to February-2023 (without October 2021)")+
+  theme_void()+
+  scale_fill_brewer(palette="Paired")
+
+grid.arrange(g1,g2,nrow=2)
+```
+Even if category 0 products are the most sold (> 60%). They are not among the top products in terms of turnover.
+
+```{r}
+# Box-plot: Price/Product category
+df_final %>%
+  ggplot()+
+  geom_boxplot(aes(x=categ,y=price,fill=categ,group=categ))+
+  scale_fill_brewer(palette="Paired")+
+  labs(title = "Prices according to product category",
+       subtitle = "Period March-2021 to February-2023 (without October 2021)",
+       x="Product category",
+       y="Sales prices")+
+  scale_y_continuous(labels = dollar_format(suffix = "€", prefix="", big.mark = '.', decimal.mark = ','))+
+  theme_minimal()
+```
+Thanks to the box-plot, we can see that the prices of the **category 2** products are higher than those of the categories 0 and 1.
+
+### Lorenz curve - Price
+```{r}
+# Lorenz curve to show the distribution of the prices on the total turnover
+tab <- Lc(df_final$price) # recovery of the points of the Lorenz curve
+
+# Data construction
+trace1 <- list(name = "Lorenz Curve",x = tab$p,y = tab$L)
+trace2 <- list(name = "Line of equality", x = c(0, 1), y = c(0, 1))
+
+# Plot design
+layout <- list(
+  title = "<b>Lorenz curve: distribution of turnover according to customers</b>.",
+  xaxis = list(
+    type = "linear", 
+    title = "Cumulative percentage of sales"
+  ), 
+  yaxis = list(
+    type = "linear", 
+    title = "Cumulative percentage of prices"
+  ), 
+  autosize = TRUE
+)
+giniIndice <- paste("Gini: ",round(ineq(df_final$price,type="Gini"),2))
+
+p <- plot_ly()
+p <- add_trace(p, name=trace1$name, x=trace1$x, y=trace1$y, type = 'scatter', mode = 'lines')
+p <- add_trace(p, name=trace2$name, x=trace2$x, y=trace2$y, type = 'scatter',mode = 'lines+markers')
+p <- add_trace(p, x=0.2, y=0.9, type = 'scatter',mode = "text", text = giniIndice,textfont = list(size=15), showlegend = FALSE)
+p <- layout(p, title=layout$title, xaxis=layout$xaxis, yaxis=layout$yaxis, autosize=layout$autosize)
+p
+```
+
+## Client Information
+### Analysis of the variable 'birth
+```{r}
+# Add an age variable to get the age of the client 
+df_final$age <- 2023 - df_final$birth
+
+# Frequency of client age (df_final)
+g1 <- df_final %>%
+  ggplot(aes(x=age))+
+  geom_histogram(aes(y=stat(count/sum(count))),bins=20,fill='steelblue')+
+  labs(title="Age frequency of transaction clients",
+       y = "Frequency",
+       x = "Age")+
+  scale_x_continuous(breaks= seq(min(df_final$age),max(df_final$age),by=5))+
+  theme_minimal()
+
+# Age frequency of customers (df_customers)
+df_customers_copy <- cbind(df_customers)
+df_customers_copy$age <- 2023 - df_customers_copy$birth
+
+g2 <- df_customers_copy %>%
+  ggplot(aes(x=age))+
+  geom_histogram(aes(y=stat(count/sum(count))),bins=20,fill='steelblue')+
+  labs(title="Age frequency of customers registered on our website",
+       y = "Frequency",
+       x = "Age")+
+  scale_x_continuous(breaks= seq(min(df_customers_copy$age),max(df_customers_copy$age),by=5))+
+  theme_minimal()
+
+grid.arrange(g1,g2,nrow=2)
+```
+
+### Comparison on turnover
+```{r}
+# Table grouping the customer ids with the realized turnover
+client_CA <- df_final %>%
+  group_by(client_id) %>%
+  summarise(CA = sum(price)) %>%
+  arrange(CA)
+
+# Top 10 clients
+client_CA %>%
+  arrange(desc(CA)) %>%
+  slice(1:10) %>%
+  ggplot()+
+  geom_col(aes(x=CA,y= reorder(client_id, CA)),fill="steelblue")+
+  labs(title="Top 10 clients by revenue",
+       subtitle = "Period March-2021 to February-2023 (without October 2021)",
+       y = "customer id",
+       x = "Turnover")+
+  scale_x_continuous(labels = dollar_format(suffix = "€", prefix="", big.mark = '.', decimal.mark = ','))+
+  theme_minimal()
+
+# Removal of potential companies 
+client_CA_2 <- client_CA %>%
+  arrange(desc(CA))%>%
+  slice(-c(1:4))
+```
+We realize that 4 customers have a **turnover** > 100.000€. These may be additional companies that have purchased equipment. 
+Therefore, we have removed these 4 companies to compare the Lorenz curve - distribution of the turnover according to the customers and compare the 2 curves. 
+
+Moreover, for future analyses, it is interesting to remove them since the turnover can modify the analysis of our customers.
+```{r}
+# Create a copy of the current dataframe
+final_all_client <- cbind(df_final)
+
+# We get the 4 client_id corresponding to the ID of the companies
+client_outlier <- as.list(client_CA%>%
+  arrange(desc(CA)) %>%
+  slice(1:4) %>%
+  select(client_id))
+
+# We remove the client IDs of the companies from the df_final
+df_final <- subset(df_final, !(client_id %in% client_outlier$client_id))
+```
+
+```{r}
+# Lorenz Curve to show the distribution of the turnover according to the customers
+tab <- Lc(client_CA$CA) # ineq library to retrieve data from the Lorenz Curve
+tab2 <- Lc(client_CA_2$CA)
+
+# Data construction
+trace1 <- list(name = "Lorenz Curve w/ entreprise",x = tab$p,y = tab$L)
+trace2 <- list(name = "Line of equality", x = c(0, 1), y = c(0, 1))
+trace3 <- list(name = "Lorenz Curve wo/ entreprise",x = tab2$p,y = tab2$L)
+
+# Plot design
+layout <- list(
+  title = "<b>Lorenz curve: distribution of turnover according to customers</b>", 
+  xaxis = list(
+    type = "linear", 
+    title = "Cumulative percentage of customers"
+  ), 
+  yaxis = list(
+    type = "linear", 
+    title = "Cumulative percentage of turnover"
+  ), 
+  autosize = TRUE
+)
+giniIndice <- paste("Gini w/entreprise: ",round(ineq(client_CA$CA,type="Gini"),2))
+giniIndice2 <- paste("Gini wo/entreprise: ",round(ineq(client_CA_2$CA,type="Gini"),2))
+
+p <- plot_ly()
+p <- add_trace(p, name=trace1$name, x=trace1$x, y=trace1$y, type = 'scatter', mode = 'lines')
+p <- add_trace(p, name=trace3$name, x=trace3$x, y=trace3$y, type = 'scatter', mode = 'lines')
+p <- add_trace(p, name=trace2$name, x=trace2$x, y=trace2$y, type = 'scatter',mode = 'lines+markers')
+p <- add_trace(p, x=0.2, y=0.9, type = 'scatter',mode = "text", text = giniIndice,textfont = list(size=15), showlegend = FALSE)
+p <- add_trace(p, x=0.2, y=0.85, type = 'scatter',mode = "text", text = giniIndice2,textfont = list(size=15), showlegend = FALSE)
+p <- layout(p, title=layout$title, xaxis=layout$xaxis, yaxis=layout$yaxis, autosize=layout$autosize)
+p
+```
+The Gini index decreased by removing the 4 customers that were potentially companies/resellers. 
+
+The 4 big customers represent almost 10% of our company's turnover.
+With companies: 20% of our customers represent 51% of our turnover
+Without companies : 20% of our customers represent 44% of our turnover
+
+### Bonus : Loyalty analysis
+```{r}
+# Products for each customer and transaction
+tab <- df_final%>%
+  group_by(client_id,session_id) %>%
+  summarize(nProduit = n())
+
+# transactions made for each customer
+tab2 <- tab %>%
+  group_by(client_id) %>%
+  summarize(nTransaction = n())
+
+# Table
+Info <- c("More than one order", "One order")
+NbClient <- c(nrow(tab2[tab2$nTransaction > 1,]),nrow(tab2[tab2$nTransaction == 1,]))
+pourcentageClient <- NbClient/nrow(tab2)
+
+fideliteClient <- data.frame(Info,NbClient,pourcentageClient)
+kable(fideliteClient)%>%
+  kable_styling(latex_options = 'striped')
+```
+Only **35** customers have made only one order, which is less than 1% of our customers.
+We have more than 99% of our customers who have returned to make a purchase on our website. 
+
+# Julie's mission:
+
+* Link between a customer's gender and the categories of books purchased;
+* Link between the age of the customers and the total amount of the purchases,
+* Frequency of purchase, average basket size and categories of books
+    of books purchased
+    
+### Relationship between customer gender and categories of books purchased:
+```{r}
+# Distribution of purchases by category and gender
+tab <- df_final %>%
+  group_by(sex,categ) %>%
+  summarize(CA = sum(price),
+            nProduit = n())
+
+ggplot(tab, aes(x=sex, y=nProduit, fill=categ))+
+  geom_bar(stat='identity',color='black',position=position_dodge())+
+  theme_minimal()+
+  labs(title="Number of products sold by gender and category",
+       subtitle = "March-2021 to February-2023 (without October 2021)",
+       x="Gender",
+       y="Number of products",
+       fill="Product category")+
+  scale_fill_brewer(palette="Paired")+
+  scale_y_continuous(labels=function(x) format(x, big.mark = ".", decimal.mark = ",", scientific = FALSE))
+```
+***Statistical test***: \
+Variable:
+
+* Gender -> qualitative
+* Category -> qualitative
+
+Test of association between two qualitative variables
+H0: There is no relationship between a customer's gender and the categories of books purchased (independent)
+H1 : There is a link between the gender of a customer and the categories of books purchased (dependent). 
+
+These are **independent** measures. Therefore, we will perform the chi-square test (association between two qualitative variables) on a contingency table. 
+```{r}
+# Creation of the contingency table
+contingence_categ_sex <- table(df_final$categ, df_final$sex)
+contingence_categ_sex
+chisq.test(contingence_categ_sex)
+```
+p-value <0.05 => \
+  we can consider that the variables are related.
+Thus, there is a link between the gender of a customer and the categories of books purchased.     
+    
+### Relationship between the age of the customers and the total amount of the purchases
+```{r}
+# Age of customers and total amount of purchases
+montantTotalAchat <- df_final %>%
+  group_by(age) %>%
+  summarize(totalCA = sum(price))
+
+ggplot(montantTotalAchat, aes(x=age, y=totalCA))+
+  geom_point()+
+  labs(title="Total amount of purchases by customer age",
+       subtitle = "March-2021 to February-2023 (without October 2021)",
+       x="Age", 
+       y="Total Purchase Amount",
+       color="Gender")+
+  scale_y_continuous(labels = dollar_format(suffix = "€", prefix="", big.mark = '.', decimal.mark = ','))
+```    
+***Statistical test***:\
+Variable:
+
+* Age of customers: quantitative
+* Total amount of purchases: quantitative
+
+Test of association between two quantitative variables - verification of normality test
+H0: there is no correlation between the age of the customers and the total amount of purchases
+H1: there is a correlation between the age of the customers and the total amount of the purchases
+
+We will use the Shapiro-Wilk test which is a test to know if a series of data follows a normal distribution or not. \
+Null hypothesis: the sample follows a normal distribution. Therefore if the p-value of the test is significant, the sample does not follow a normal distribution.
+```{r}
+# Normality test - quantitative variable
+shapiro.test(montantTotalAchat$totalCA)
+shapiro.test(montantTotalAchat$age)
+```
+p-value <0.05 => 
+  the variables do not follow a normal distribution.
+Use of the non-parametric test: **Spearman correlation**
+```{r}
+# Spearman correlation
+cor.test(montantTotalAchat$age,montantTotalAchat$totalCA,method='spearman')
+```
+p-value <0.05 => \
+  Correlation between customer age and total purchase amount. \
+The correlation coefficient is -0.87.     
+
+### Relationship between the age of the customers and the frequency of purchase
+In our case, the purchase frequency corresponds to the number of transactions made per day by a specific age. 
+```{r}
+# Age of customers and daily purchase frequency
+frequenceAchatProduit <- df_final %>%
+  group_by(age,session_id, year, month, day) %>%
+  summarize(nProduit = n())
+
+frequenceAchatTransaction <- frequenceAchatProduit %>%
+  group_by(age, year, month, day) %>%
+  summarize(nTransaction = n()) %>%
+  group_by(age) %>%
+  summarize(nTransactionMean = mean(nTransaction))
+  
+ggplot(frequenceAchatTransaction, aes(x=age,y=nTransactionMean))+geom_point()+
+    labs(title="Purchase frequency by customer age (daily representation)", 
+         subtitle = "March-2021 to February-2023 (without October 2021)",
+         x="Age", 
+         y="Number of purchases per day")
+```
+***Statistical test***:\
+Variable:
+
+* Age of customers: quantitative
+* Frequency of purchases: quantitative
+
+Test of association between two quantitative variables - verification of normality test:
+H0: there is no correlation between the age of the customers and the frequency of purchases
+H1: there is a correlation between the age of the customers and the frequency of the purchases
+
+We are going to use the Shapiro-Wilk test which is a test to know if a series of data follows a normal distribution or not. \
+Null hypothesis: the sample follows a normal distribution. Therefore if the p-value of the test is significant, the sample does not follow a normal distribution.
+```{r}
+# Normality test - quantitative variable
+shapiro.test(frequenceAchatTransaction$nTransactionMean)
+shapiro.test(frequenceAchatTransaction$age)
+```
+p-value <0.05 => 
+  the variables do not follow a normal distribution.
+Use of the non-parametric test: **Spearman correlation**
+```{r}
+# Spearman correlation:
+cor.test(frequenceAchatTransaction$age,frequenceAchatTransaction$nTransactionMean,method='spearman',exact=FALSE)
+```
+p-value <0.05 =>= correlation between customer age and daily shopping frequency
+  correlation between customer age and daily shopping frequency.
+The correlation coefficient is -0.65.
+
+### Link between the age of the customers and the size of the average basket
+```{r}
+# Customer age and average shopping cart size
+panierMoyen <- df_final%>%
+  group_by(age, session_id)%>% 
+  summarize(panier = n()) %>% # we get for each age and session the number of products
+  group_by(age) %>% 
+  summarize(meanPanier = mean(panier)) # then group by age and average the products to get the average shopping cart. 
+
+#Graph
+ggplot(panierMoyen, aes(x=age,y=meanPanier))+geom_point()+
+    labs(title="Average number of products in the shopping cart by customer age",
+        subtitle = "Period March-2021 to February-2023 (without October 2021)",
+         x="Age", 
+         y="Average number of products in the basket")
+```
+***Statistical test***:\
+
+Variable:
+
+* Age of customers: quantitative
+* Average shopping cart size: quantitative
+
+Test of association between two quantitative variables - verification of normality test
+H0: there is no correlation between the age of the customers and the size of the average shopping cart
+H1: there is a correlation between the age of the customers and the size of the average shopping cart
+
+We will use the Shapiro-Wilk test which is a test to know if a series of data follows a normal distribution or not. \
+Null hypothesis: the sample follows a normal distribution. Therefore if the p-value of the test is significant, the sample does not follow a normal distribution.
+```{r}
+# Normality test
+shapiro.test(panierMoyen$age)
+shapiro.test(panierMoyen$meanPanier)
+```
+p-value <0.05 => 
+  the variables do not follow a normal distribution.
+Use of the non-parametric test: **Spearman correlation**
+
+```{r}
+# Spearman correlation
+cor.test(panierMoyen$age,panierMoyen$meanPanier,method="spearman")
+```
+p-value <0.05 =>
+  correlation between customer age and average shopping cart.
+The correlation coefficient is -0.63.
+
+
+We notice 3 distinct groups thanks to this graph. We will make a segmentation by age of these 3 groups, to check if there is a significant difference between these 3 groups on the average number of products in the shopping cart. 
+```{r}
+# Age segmentation according to the 3 groups obtained from the previous graph
+panierMoyen <- panierMoyen %>%
+  mutate(agegroup = case_when(age <= 31 ~ '19-31',
+                              age >= 32 & age <= 51 ~'32-51',
+                              age >= 52 ~'52+'))
+# Descriptive Stats 
+panierMoyen %>%
+  group_by(agegroup) %>%
+  get_summary_stats(meanPanier, type ="common")
+
+# Visualization
+ggboxplot(panierMoyen, x="agegroup", y="meanPanier")
+```
+***Statistical test***:\
+
+Variable:
+
+* Age group: qualitative
+* Average shopping cart: quantitative
+
+One-way ANOVA: Analysis of a quantitative variable with a qualitative variable. \
+H0: There is no difference between the age group of the customers and the size of the average shopping cart
+H1: There is a difference between the age group of the customers and the size of the average shopping cart
+```{r}
+# Normal Q-Q Plot
+ggqqplot(panierMoyen$meanPanier)
+```
+We use the Normal Q-Q Plot to check the normality of the variable. 
+The variable 'average shopping cart' does not follow a normal distribution, so we will use the Kruskal-Wallis (non-parametric test) instead of the ANOVA. 
+
+```{r}
+# Calculs
+res.kruskal <- panierMoyen %>% kruskal_test(meanPanier ~ agegroup)
+res.kruskal
+# Effect size
+panierMoyen %>% kruskal_effsize(meanPanier ~ agegroup)
+# Multiple pairwise comparison
+pwc <- panierMoyen %>% wilcox_test(meanPanier ~ agegroup, p.adjust.method = "bonferroni")
+pwc
+```
+p-value <0.05 =>\
+  Difference between customer age group and average shopping cart.
+  
+Effect size = 0.775 (large)
+
+To visualize the difference, we use the multiple pairwise comparison with the **Wilcoxon test**.
+```{r}
+# Graphical representation 
+pwc <- pwc %>% add_xy_position(x = "agegroup")
+ggboxplot(panierMoyen, x = "agegroup", y = "meanPanier") +
+  stat_pvalue_manual(pwc, hide.ns = TRUE) +
+  labs(
+    subtitle = get_test_label(res.kruskal, detailed = TRUE),
+    caption = get_pwc_label(pwc)
+    )
+```
+
+### Relationship between customer age and categories of books purchased
+```{r}
+# Creation of an age category data
+labs <- c(paste(seq(15,84, by = 10),
+                seq(15+10-1, 85-1, by=10),
+                sep = "-"),
+                paste(85,"+",sep=""))
+
+df_final$groupeAge <- cut(df_final$age, breaks = c(seq(15,90,by = 10), Inf), labels = labs, right=FALSE)
+
+ageCategorie <- df_final %>%
+  group_by(groupeAge,categ)%>%
+  summarize(nProduit = n())
+
+# Graphic
+ageCategorie %>%
+  ggplot()+
+  geom_col(aes(x=groupeAge,y=nProduit, fill=categ),position=position_dodge())+
+  scale_fill_brewer(palette="Paired") +
+  scale_y_continuous(labels = scales::comma)+
+  labs(title="Relationship between customer age and book categories purchased",
+       subtitle = "March-2021 to February-2023 (without October 2021)",
+       x="Age category", 
+       y="Number of product purchased",
+       fill="Product category")+
+  theme_minimal()
+```
+***Statistical test***:\
+Variable:
+
+* Age of customers: quantitative
+* Category of books purchased: qualitative
+
+One-way ANOVA: Analysis of a quantitative variable with a qualitative variable. 
+
+H0: there is no difference between the age of the customers and the category of books purchased
+H1 : there is a difference between the age of the customers and the category of books purchased
+
+```{r}
+# We retrieve the information we are interested in, namely the age and the category associated in the final dataframe
+analyseAnova <- df_final %>%
+  select(age, categ)
+levels(analyseAnova$categ)
+
+# Descriptive statistics
+analyseAnova %>%
+  group_by(categ) %>%
+  get_summary_stats(age, type = 'common')
+# Visualization 
+ggqqplot(analyseAnova, 'age', facet.by = 'categ')
+```
+We use the Normal Q-Q Plot to check the normality of the variable. 
+The age variable does not follow a normal distribution, so we will use the Kruskal-Wallis (non-parametric test) instead of the ANOVA. 
+
+```{r}
+# Computation
+res.kruskal <- analyseAnova %>% kruskal_test(age ~ categ)
+res.kruskal
+
+analyseAnova %>% kruskal_effsize(age ~ categ)
+pwc <- analyseAnova %>%
+  wilcox_test(age ~ categ, p.adjust.method = "bonferroni")
+```
+p-value <0.05 =>\
+  Difference between customer age and book categories purchased.
+  
+Effect size = 0.114 (moderate)
+
+To visualize the difference, we use the multiple pairwise comparison with the **Wilcoxon test**.
+```{r}
+# Report
+pwc <- pwc %>% add_xy_position(x = "categ")
+ggboxplot(analyseAnova, x = "categ", y = "age") +
+  stat_pvalue_manual(pwc, hide.ns = TRUE) +
+  labs(
+    subtitle = get_test_label(res.kruskal, detailed = TRUE),
+    caption = get_pwc_label(pwc)
+    )
+```
+# End of Markdown R. Thank you for reading.   
