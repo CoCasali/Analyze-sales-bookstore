@@ -3,8 +3,8 @@ title: "Analyze the sales of a bookstore"
 author: "Corentin Casali"
 date: "2/1/2022"
 output:
-  html_document: default
   pdf_document: default
+  html_document: default
 editor_options:
   chunk_output_type: console
 ---
