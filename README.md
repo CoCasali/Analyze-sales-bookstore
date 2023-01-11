@@ -20,7 +20,7 @@
 <h1 align="center">Analyze the sales of a bookstore</h1>
 
   <p align="center">
-    Storyline : I work at La poule qui chante, a French food company. It wishes to develop internationally.
+    Storyline : I work as Data Analyst Consultant at Lapage, a large and reputable generalist online bookstore
     <br />
     <a href="https://github.com/CoCasali/market-study-chicken"><strong>Explore the docs »</strong></a>
     <br />
@@ -51,24 +51,30 @@
 ## About The Project
 
 **Contextual reminder**\
-You work for La poule qui chante, a French food company. It wishes to develop internationally.
-International, yes, but for the moment, the field of possibilities is quite large: no particular country or continent has been chosen yet. All countries are possible!
+ They (Lapage) opened our online bookstore two years ago, and they would like to take stock now. This will allow them to decide how to proceed, for example whether to create certain offers, adjust certain prices, etc.
 
 **Mission objective**\
-To propose a first analysis of the groups of countries that we can target to export our chickens.
-We will use the data provided by the FAO (*Food and Agriculture Organization*) website for the first data that we will be able to feed with data meeting the criteria of the PESTEL analysis, available in open data on the FAO website. 
+An analysis of the different sales indicators
+- indicators and graphs around the turnover ;
+- look at the evolution over time and set up a moving average to evaluate the global trend ;
+- zoom in on the references, to see the tops and flops, the distribution by category, etc ;
+- some information on the profiles of our customers, and also the distribution of the turnover between them, via for example a Lorenz curve
+
+A more targeted analysis of the customers
+- link between a customer's gender and the categories of books purchased;
+- the relationship between customer age and total purchase amount, purchase frequency, average basket size and categories of books purchased
 
 **Data analysis**\
-First, test the hierarchical ascending classification (HAC) with a dendogram as a visulation. Then, use the K-means method which will refine the analysis and allow to compare the results of the two clustering methods. \
-The PCA will allow us to visualize the results of my analysis, to understand the groups, the links between the variables and individuals...
+Perform a statistical test
+Analyze time series
+Perform a bivariate analysis to interpret data
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 
 ### Built With
 
-* [![Jupyter][Jupyter.icon]][Jupyter-url]
-* [![Python][Python.js]][Python-url]
+* [![R][R.icon]][R-url]]
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -86,7 +92,7 @@ The PCA will allow us to visualize the results of my analysis, to understand the
 
 Your Name - [@corentincasali](https://twitter.com/corentincasali)
 
-Project Link: [https://github.com/CoCasali/market-study-chicken](https://github.com/CoCasali/market-study-chicken)
+Project Link: [https://github.com/CoCasali/Analyze-sales-bookstore](https://github.com/CoCasali/Analyze-sales-bookstore)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -109,4 +115,6 @@ Project Link: [https://github.com/CoCasali/market-study-chicken](https://github.
 [Python-url]: https://www.python.org/
 [Jupyter.icon]:https://img.shields.io/badge/Made%20with-Jupyter-orange?style=for-the-badge&logo=Jupyter
 [Jupyter-url]:https://jupyter.org/try
+[R.icon]:https://img.shields.io/badge/MADE%20WITH-R-blue?style=for-the-badge&logo=R
+[R-url]:https://www.r-project.org/
 
