@@ -74,7 +74,7 @@ Perform a bivariate analysis to interpret data
 
 ### Built With
 
-* [![R][R.icon]][R-url]]
+* [![R][R.icon]][R-url]
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
